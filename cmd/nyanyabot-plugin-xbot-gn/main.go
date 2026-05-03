@@ -60,12 +60,12 @@ type GroupNameRequest struct {
 }
 
 type eventContext struct {
-	MsgType    string
-	GroupID    any
-	UserID     any
-	RawMessage string
-	Payload    map[string]any
-	Message    []map[string]any
+	MsgType string
+	GroupID any
+	UserID  any
+	Content string
+	Payload map[string]any
+	Message []map[string]any
 }
 
 func (p *GNPlugin) Descriptor(ctx context.Context) (papi.Descriptor, error) {
@@ -616,11 +616,11 @@ func parseEventContext(eventRaw ob11.Event) (eventContext, error) {
 	}
 
 	eCtx := eventContext{
-		MsgType:    strings.TrimSpace(anyToString(evt["message_type"])),
-		GroupID:    evt["group_id"],
-		UserID:     evt["user_id"],
-		RawMessage: strings.TrimSpace(anyToString(evt["raw_message"])),
-		Payload:    evt,
+		MsgType: strings.TrimSpace(anyToString(evt["message_type"])),
+		GroupID: evt["group_id"],
+		UserID:  evt["user_id"],
+		Content: strings.TrimSpace(anyToString(evt["content"])),
+		Payload: evt,
 	}
 
 	// Extract message segments for reply detection
