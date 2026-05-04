@@ -253,7 +253,6 @@ func (p *GNPlugin) Shutdown(ctx context.Context) error {
 
 // handleRequest 处理提交群名称修改请求
 func (p *GNPlugin) handleRequest(ctx context.Context, eventRaw ob11.Event, match *papi.CommandMatch) (papi.HandleResult, error) {
-	_ = ctx
 	log := hclog.L()
 	evt, err := parseEventContext(eventRaw)
 	if err != nil {
@@ -281,19 +280,19 @@ func (p *GNPlugin) handleRequest(ctx context.Context, eventRaw ob11.Event, match
 
 	// Extract the name template from match
 	if match == nil || len(match.Groups) < 1 {
-		util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 请提供群名称模板")
+		util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 请提供群名称模板")
 		return papi.HandleResult{}, nil
 	}
 
 	nameTemplate := strings.TrimSpace(match.Groups[0])
 	if nameTemplate == "" {
-		util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 群名称模板不能为空")
+		util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 群名称模板不能为空")
 		return papi.HandleResult{}, nil
 	}
 
 	// Check if template contains %s
 	if !strings.Contains(nameTemplate, "%s") {
-		util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 群名称模板必须包含 %s")
+		util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 群名称模板必须包含 %s")
 		return papi.HandleResult{}, nil
 	}
 
@@ -317,11 +316,11 @@ func (p *GNPlugin) handleRequest(ctx context.Context, eventRaw ob11.Event, match
 	`, groupID, requesterID, nameTemplate, finalName, msgGroupID, msgSeq).Scan(&requestID)
 	if err != nil {
 		log.Error("[XBot GN] 插入请求失败", "error", err)
-		util.SendError(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 提交请求失败", err)
+		util.SendError(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 提交请求失败", err)
 		return papi.HandleResult{}, nil
 	}
 
-	util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID,
+	util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID,
 		fmt.Sprintf("✅ 请求 #%d 已提交！\n模板: %s\n最终群名: %s\n请等待管理员审核（管理员请回复此消息后发送: gn approve）",
 			requestID, nameTemplate, finalName))
 	return papi.HandleResult{}, nil
@@ -357,14 +356,14 @@ func (p *GNPlugin) handleApprove(ctx context.Context, eventRaw ob11.Event) (papi
 	// Check if sender is admin
 	senderID := anyToInt64(evt.UserID)
 	if senderID != adminQQ {
-		util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 只有管理员可以执行此命令")
+		util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 只有管理员可以执行此命令")
 		return papi.HandleResult{}, nil
 	}
 
 	// Extract reply message identifier from the event
 	replyGroupID, replySeq, found := extractReplyMessageIdentifier(ctx, host, evt)
 	if !found {
-		util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 请回复要审核的请求消息后再发送 gn approve")
+		util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 请回复要审核的请求消息后再发送 gn approve")
 		return papi.HandleResult{}, nil
 	}
 
@@ -379,11 +378,11 @@ func (p *GNPlugin) handleApprove(ctx context.Context, eventRaw ob11.Event) (papi
 	`, replyGroupID, replySeq).Scan(&requestID, &nameTemplate, &finalName)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 未找到对应的待审核请求，请确认回复的是 gn request 消息")
-			util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, fmt.Sprintf("Debug: reply seq=%d", replySeq))
+			util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 未找到对应的待审核请求，请确认回复的是 gn request 消息")
+			util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, fmt.Sprintf("Debug: reply seq=%d", replySeq))
 		} else {
 			log.Error("[XBot GN] 查询请求失败", "error", err)
-			util.SendError(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 查询请求失败", err)
+			util.SendError(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 查询请求失败", err)
 		}
 		return papi.HandleResult{}, nil
 	}
@@ -396,18 +395,17 @@ func (p *GNPlugin) handleApprove(ctx context.Context, eventRaw ob11.Event) (papi
 	`, senderID, requestID)
 	if err != nil {
 		log.Error("[XBot GN] 更新请求状态失败", "error", err)
-		util.SendError(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 审核失败", err)
+		util.SendError(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 审核失败", err)
 		return papi.HandleResult{}, nil
 	}
 
-	util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID,
+	util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID,
 		fmt.Sprintf("✅ 已批准请求 #%d！\n模板: %s\n最终群名: %s\n将在UTC+8 00:00自动修改群名称。", requestID, nameTemplate, finalName))
 	return papi.HandleResult{}, nil
 }
 
 // handleList 列出所有已通过审核待执行的群名称
 func (p *GNPlugin) handleList(ctx context.Context, eventRaw ob11.Event) (papi.HandleResult, error) {
-	_ = ctx
 	log := hclog.L()
 	evt, err := parseEventContext(eventRaw)
 	if err != nil {
@@ -441,7 +439,7 @@ func (p *GNPlugin) handleList(ctx context.Context, eventRaw ob11.Event) (papi.Ha
 	`)
 	if err != nil {
 		log.Error("[XBot GN] 查询请求列表失败", "error", err)
-		util.SendError(host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 查询列表失败", err)
+		util.SendError(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "❌ 查询列表失败", err)
 		return papi.HandleResult{}, nil
 	}
 	defer rows.Close()
@@ -457,7 +455,7 @@ func (p *GNPlugin) handleList(ctx context.Context, eventRaw ob11.Event) (papi.Ha
 	}
 
 	if len(requests) == 0 {
-		util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, "ℹ️ 当前没有已通过审核待执行的群名称")
+		util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, "ℹ️ 当前没有已通过审核待执行的群名称")
 		return papi.HandleResult{}, nil
 	}
 
@@ -476,13 +474,12 @@ func (p *GNPlugin) handleList(ctx context.Context, eventRaw ob11.Event) (papi.Ha
 			i+1, r.ID, r.RequesterID, r.NameTemplate, r.FinalName, approvedBy, approvedAt))
 	}
 
-	util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, sb.String())
+	util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, sb.String())
 	return papi.HandleResult{}, nil
 }
 
 // handleHelp 显示帮助信息
 func (p *GNPlugin) handleHelp(ctx context.Context, eventRaw ob11.Event) (papi.HandleResult, error) {
-	_ = ctx
 	log := hclog.L()
 	evt, err := parseEventContext(eventRaw)
 	if err != nil {
@@ -526,13 +523,12 @@ func (p *GNPlugin) handleHelp(ctx context.Context, eventRaw ob11.Event) (papi.Ha
 - 每天只执行一个群名，其余留到第二天
 - 本插件只在配置的群聊中生效`
 
-	util.SendText(host, evt.MsgType, evt.GroupID, evt.UserID, helpText)
+	util.SendText(ctx, host, evt.MsgType, evt.GroupID, evt.UserID, helpText)
 	return papi.HandleResult{}, nil
 }
 
 // handleCronExecute 定时任务：每天执行一个已审核的群名
 func (p *GNPlugin) handleCronExecute(ctx context.Context, eventRaw ob11.Event) (papi.HandleResult, error) {
-	_ = ctx
 	log := hclog.L()
 
 	host := transport.Host()
@@ -565,7 +561,7 @@ func (p *GNPlugin) handleCronExecute(ctx context.Context, eventRaw ob11.Event) (
 	}
 
 	// Call OneBot API to set group name
-	_, err = host.CallOneBot(context.Background(), "set_group_name", map[string]any{
+	_, err = host.CallOneBot(ctx, "set_group_name", map[string]any{
 		"group_id":   groupID,
 		"group_name": finalName,
 	})
@@ -585,7 +581,7 @@ func (p *GNPlugin) handleCronExecute(ctx context.Context, eventRaw ob11.Event) (
 		p.mu.RUnlock()
 
 		if adminQQ > 0 {
-			util.SendText(host, "private", 0, &adminQQ,
+			util.SendText(ctx, host, "private", 0, &adminQQ,
 				fmt.Sprintf("❌ 定时任务执行失败\n请求ID: %d\n群名: %s\n错误: %v", id, finalName, err))
 		}
 
